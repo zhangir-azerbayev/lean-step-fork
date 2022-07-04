@@ -69,21 +69,26 @@ for step in data:
 
                 to_add_nm = " ".join([h[0] for h in hyps[i:i_range]])
                 to_add_tp = hyps[i][1]
+                inner = f"{to_add_nm} : {to_add_tp}"
 
                 if paren_type=="(":
                     statement = add_hyp(
                             statement, 
-                            f"({to_add_nm} : {to_add_tp})"
+                            f"({inner})"
                             )
-                else: 
+                elif paren_type=="{": 
                     statement = add_hyp(
                             statement, 
-                            f"{{{to_add_nm} : {to_add_tp}}}"
+                            f"{{{inner}}}"
+                            )
+                else: 
+                    statement= add_hyp(
+                            statement,
+                            f"[{inner}]"
                             )
                 i = i_range
         
     
-
         conc_search = re.search("(.*\),)|(.*\},)|(.*\],)", step['decl_tp'])
         if conc_search: 
             conc = step["decl_tp"][conc_search.span()[1]+1:]
