@@ -18,34 +18,53 @@ with jsonlines.open(path) as f:
 
 nms_so_far = set()
 
-for i, step in enumerate(data): 
+for step in data: 
     if step['decl_nm'] not in nms_so_far: 
-        #newline here for convenience, remember to remove
-        statement = "\ntheorem " + step['decl_nm'] + " "
-        nms_so_far.add(step['decl_nm'])
-
-        is_star_joining = False # so we get (G H : Type*)
-        for hyp in step['hyps']:
-            if is_star_joining: 
-                if re.match(TYPE_STAR_PATTERN, hyp[1]):
-                    current_hyp += " " + hyp[0]
-                    continue 
-                else: 
-                    current_hyp += " : Type*)"
-                    statement = add_hyp(statement, current_hyp)
-                    
-                    is_star_joining = False 
-
-
-            if re.match(TYPE_STAR_PATTERN, hyp[1]) and not is_star_joining: 
-                current_hyp = f"({hyp[0]}"
-                is_star_joining = True 
+        dot_index = step["decl_nm"].rfind(".")
+        statement = "\ntheorem " + step["decl_nm"][dot_index+1:] + " " 
+        nms_so_far.add(step["decl_nm"])
+        
+        hyps = step['hyps']
+        i = 0 
+        while i < len(hyps): 
+            if hyps[i][0][0]=="_": 
+                to_add_tp = hyps[i][1]
+                statement = add_hyp(statement, f"[{to_add_tp}]")
+                i += 1
             else: 
-                if hyp[0][0]=="_": 
-                    current_hyp = f"[{hyp[1]}]"
+                if re.match(TYPE_STAR_PATTERN, hyps[i][1]): 
+                    hyps[i][1] = "Type*"
+                    i_range = i+1 
+                    while i_range < len(hyps) and re.match(TYPE_STAR_PATTERN, hyps[i_range][1]): 
+                        i_range += 1
                 else: 
-                    current_hyp = f"({hyp[0]} : {hyp[1]})"
+                    i_range = i+1
+                    while i_range<len(hyps) and hyps[i][1]==hyps[i_range][1]:
+                        i_range += 1
+                
+                to_add_nm = " ".join([h[0] for h in hyps[i:i_range]])
+                to_add_tp = hyps[i][1]
+                statement = add_hyp(
+                        statement, 
+                        f"({to_add_nm} : {to_add_tp})"
+                        )
+                i = i_range
+        
+    
 
-                statement = add_hyp(statement, current_hyp)
+        conc_search = re.search("(.*\),)|(.*\},)|(.*\],)", step['decl_tp'])
+        if conc_search: 
+            conc = step["decl_tp"][conc_search.span()[1]+1:]
+        else: 
+            conc = step["decl_tp"]
+
+        conc = conc[conc.rfind('→ ')+1:].strip()
+
+        statement += " :\n\t" + conc
 
         print("#"*40 + "\n" + step["decl_tp"] + statement)
+
+
+
+
+
