@@ -10,25 +10,27 @@ def add_hyp(stmnt, hyp):
     else: 
         return stmnt + " " + hyp
 def get_paren_type(hyp, tp): 
-    print("hypothesis: ", hyp)
-    key = r"((\s)|(\()|(\{)|(\[))" + f"{re.escape(hyp[0])}.*?: {re.escape(hyp[1])}"
-    print("first key: ", key)
+    before_var = r"((\s)|(\()|(\{)|(\[))"
+    key = before_var + f"{re.escape(hyp[0])}.*?: {re.escape(hyp[1])}"
     first_search = re.search(key, tp)
     if first_search is None: 
-        print("no match found, return: (")
-        return "("
+        leftarrow_case = r"(→" + re.escape(hyp[1]) + r")"
+        binder_case = "(" + re.escape(hyp[0]) + r"[^\}\)\]]" + re.escape(hyp[1]) + ")"
+        second_key = leftarrow_case + "|" + binder_case
+        second_search = re.search(second_key, tp)
+        if second_search: 
+            return "("
+        else: 
+            return False 
     else: 
-        print("first match: ", first_search.group())
         i = first_search.span()[0]+1
         left = tp[:i]
-        print("left: ", left)
 
         j_1 = left.rfind("(")
         j_2 = left.rfind("{")
         j_3 = left.rfind("[")
         j = max(j_1, j_2, j_3)
 
-        print("result: ", left[j])
         return left[j]
 
 TYPE_STAR_PATTERN = "Type u_.*"
@@ -47,6 +49,7 @@ for step in data:
         nms_so_far.add(step["decl_nm"])
         
         hyps = step['hyps']
+        print(hyps)
         i = 0 
         while i < len(hyps): 
             if hyps[i][0][0]=="_": 
@@ -55,6 +58,9 @@ for step in data:
                 i += 1
             else: 
                 paren_type = get_paren_type(hyps[i], step["decl_tp"])
+                if not paren_type: 
+                    i += 1
+                    continue 
 
                 if re.match(TYPE_STAR_PATTERN, hyps[i][1]): 
                     i_range = i+1 
@@ -89,19 +95,16 @@ for step in data:
                 i = i_range
         
     
-        conc_search = re.search("(.*\),)|(.*\},)|(.*\],)", step['decl_tp'])
-        if conc_search: 
-            conc = step["decl_tp"][conc_search.span()[1]+1:]
-        else: 
-            conc = step["decl_tp"]
+        j_1 = step["decl_tp"].rfind("),")
+        j_2 = step["decl_tp"].rfind("},")
+        j_3 = step["decl_tp"].rfind("],")
+        j = max(j_1, j_2, j_3)
 
-        conc = conc[conc.rfind('→ ')+1:].strip()
+        conc = step["decl_tp"][j+1:]
+
+        conc = conc[conc.rfind('→ ')+1:].strip(',').strip()
 
         statement += " :\n\t" + conc
 
-        print("\n" + step["decl_tp"] + statement+"\n" + "#"*40)
-
-
-
-
+        print("\n" + step["decl_tp"] + "\n" + statement+"\n" + "#"*40)
 
