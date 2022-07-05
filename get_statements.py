@@ -2,38 +2,8 @@ import jsonlines
 import re 
 import sys 
 
-
-def add_hyp(stmnt, hyp): 
-    if len(stmnt[stmnt.rfind("\n"):] + hyp) > 80:
-        new_stmnt = stmnt + "\n\t" + hyp
-        return new_stmnt
-    else: 
-        return stmnt + " " + hyp
-def get_paren_type(hyp, tp): 
-    before_var = r"((\s)|(\()|(\{)|(\[))"
-    key = before_var + f"{re.escape(hyp[0])}.*?: {re.escape(hyp[1])}"
-    first_search = re.search(key, tp)
-    if first_search is None: 
-        leftarrow_case = r"(→" + re.escape(hyp[1]) + r")"
-        binder_case = "(" + re.escape(hyp[0]) + r"[^\}\)\]]" + re.escape(hyp[1]) + ")"
-        second_key = leftarrow_case + "|" + binder_case
-        second_search = re.search(second_key, tp)
-        if second_search: 
-            return "("
-        else: 
-            return False 
-    else: 
-        i = first_search.span()[0]+1
-        left = tp[:i]
-
-        j_1 = left.rfind("(")
-        j_2 = left.rfind("{")
-        j_3 = left.rfind("[")
-        j = max(j_1, j_2, j_3)
-
-        return left[j]
-
-TYPE_STAR_PATTERN = "Type u_.*"
+# The philosophy is to try to apply well formedness preserving transformations
+# to the type signature. 
 
 path = sys.argv[1]
 
@@ -45,66 +15,71 @@ nms_so_far = set()
 for step in data: 
     if step['decl_nm'] not in nms_so_far: 
         dot_index = step["decl_nm"].rfind(".")
-        statement = "\ntheorem " + step["decl_nm"][dot_index+1:] + " " 
+        statement = "\ntheorem " + step["decl_nm"][dot_index+1:] + " "
         nms_so_far.add(step["decl_nm"])
         
-        hyps = step['hyps']
-        print(hyps)
-        i = 0 
-        while i < len(hyps): 
-            if hyps[i][0][0]=="_": 
-                to_add_tp = hyps[i][1]
-                statement = add_hyp(statement, f"[{to_add_tp}]")
-                i += 1
-            else: 
-                paren_type = get_paren_type(hyps[i], step["decl_tp"])
-                if not paren_type: 
-                    i += 1
-                    continue 
+        tp = step["decl_tp"]
+        print(tp)
 
-                if re.match(TYPE_STAR_PATTERN, hyps[i][1]): 
-                    i_range = i+1 
-                    while i_range < len(hyps) and re.match(TYPE_STAR_PATTERN, hyps[i_range][1]) and paren_type==get_paren_type(hyps[i_range], step["decl_tp"]):  
-                        i_range += 1
-                    hyps[i][1]="Type*"
-                else: 
-                    i_range = i+1
-                    while i_range<len(hyps) and hyps[i][1]==hyps[i_range][1] and paren_type==get_paren_type(hyps[i_range], step["decl_tp"]):
-                        i_range += 1
-                
+        if tp[0]=="∀": 
+            tp = tp[2:]
 
-                to_add_nm = " ".join([h[0] for h in hyps[i:i_range]])
-                to_add_tp = hyps[i][1]
-                inner = f"{to_add_nm} : {to_add_tp}"
-
-                if paren_type=="(":
-                    statement = add_hyp(
-                            statement, 
-                            f"({inner})"
-                            )
-                elif paren_type=="{": 
-                    statement = add_hyp(
-                            statement, 
-                            f"{{{inner}}}"
-                            )
-                else: 
-                    statement= add_hyp(
-                            statement,
-                            f"[{inner}]"
-                            )
-                i = i_range
+        # we need to find the "outer comma"
+        counter = 0 
+        for i, c in enumerate(tp): 
+            if c=="(" or c=="{" or c=="[":
+                counter += 1
+            elif c==")" or c=="}" or c=="]": 
+                counter -= 1
+            elif c=="," and counter==0: 
+                comma_index = i
+                break
+            elif i==len(tp)-1: 
+                comma_index=-1
         
-    
-        j_1 = step["decl_tp"].rfind("),")
-        j_2 = step["decl_tp"].rfind("},")
-        j_3 = step["decl_tp"].rfind("],")
-        j = max(j_1, j_2, j_3)
+        if comma_index!=-1: 
+            # pulls implications into binders
+            for hyp in step["hyps"]: 
+                key = re.escape(hyp[1]) + re.escape(r" →")
+                search = re.search(key, tp)
+                if search and search.span()[0]>comma_index: 
+                    tp = re.sub(key, "", tp)
+                    binder = f" ({hyp[0]} : {hyp[1]})"
+                    tp = tp[:comma_index] + binder + tp[comma_index:]
+                    comma_index += len(binder)
 
-        conc = step["decl_tp"][j+1:]
+            # removes trailing parantheses 
+            conc = tp[comma_index+1:].strip()
+            conc = conc[1:-1] if conc[0]=="(" and conc[-1]==")" else conc 
 
-        conc = conc[conc.rfind('→ ')+1:].strip(',').strip()
+            tp = tp[:comma_index] + " :\n\t" + conc
+        else: 
+            tp = ":\n\t" + tp
 
-        statement += " :\n\t" + conc
+        # replace [_inst_n : Type] with [Type]
+        tp = re.sub(r"_inst_[0-9]* : ", "", tp)
+        
+        # Collapses Type u_1's into Type*'s 
+        key = r": Type u_[0-9]\} \{[^\}]*: Type u_[0-9]"
+        while re.search(key, tp): 
+            search = re.search(key, tp)
+            left = search.span()[0]
+            right = search.span()[1]
+            tp = tp[:left] + re.sub(": Type u_[0-9]\} \{", "", tp[left:right]) + tp[right:]
+        tp = re.sub("Type u_[0-9]", "Type*", tp)
+ 
+        statement += tp
 
-        print("\n" + step["decl_tp"] + "\n" + statement+"\n" + "#"*40)
+        # Makes sure all lines aren't much more than 80 characters
+        combinations = [x + " " + y for x in [')', '}', ']'] for y in ['(', '{', '[']]
+        i=1
+        while i < len(statement)-1: 
+            if statement[i-1:i+2] in combinations: 
+                left = statement[:i]
+                if len(left[left.rfind("\n"):])>60: 
+                    statement = statement[:i] + "\n\t" + statement[i+1:]
+                    i += 1
+            i += 1 
+            
 
+        print(statement + "\n" + "#"*40)
