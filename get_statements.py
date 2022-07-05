@@ -50,7 +50,7 @@ for step in data:
 
             # removes trailing parantheses 
             conc = tp[comma_index+1:].strip()
-            conc = conc[1:-1] if conc[0]=="(" and conc[-1]==")" else conc 
+            #conc = conc[1:-1] if conc[0]=="(" and conc[-1]==")" else conc 
 
             tp = tp[:comma_index] + " :\n\t" + conc
         else: 
@@ -60,23 +60,34 @@ for step in data:
         tp = re.sub(r"_inst_[0-9]* : ", "", tp)
         
         # Collapses Type u_1's into Type*'s 
-        key = r": Type u_[0-9]\} \{[^\}]*: Type u_[0-9]"
+        typeu = r": Type u_[0-9]"
+        curlys = r"\} \{[^\}]*"
+        rounds = r"\) \([^\)]*"
+        key = typeu + curlys + typeu
         while re.search(key, tp): 
             search = re.search(key, tp)
             left = search.span()[0]
             right = search.span()[1]
             tp = tp[:left] + re.sub(": Type u_[0-9]\} \{", "", tp[left:right]) + tp[right:]
+        # now the same for rounds
+        key = typeu + rounds + typeu
+        while re.search(key, tp): 
+            search = re.search(key, tp)
+            left = search.span()[0]
+            right = search.span()[1]
+            tp = tp[:left] + re.sub(": Type u_[0-9]\) \(", "", tp[left:right]) + tp[right:]
+
         tp = re.sub("Type u_[0-9]", "Type*", tp)
  
         statement += tp
 
-        # Makes sure all lines aren't much more than 80 characters
+        # Makes sure all lines aren't much more than 70 characters
         combinations = [x + " " + y for x in [')', '}', ']'] for y in ['(', '{', '[']]
         i=1
         while i < len(statement)-1: 
             if statement[i-1:i+2] in combinations: 
                 left = statement[:i]
-                if len(left[left.rfind("\n"):])>60: 
+                if len(left[left.rfind("\n"):])>70: 
                     statement = statement[:i] + "\n\t" + statement[i+1:]
                     i += 1
             i += 1 
