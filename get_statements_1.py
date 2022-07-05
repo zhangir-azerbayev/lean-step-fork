@@ -42,14 +42,11 @@ for step in data:
             for hyp in step["hyps"]: 
                 key = re.escape(hyp[1]) + re.escape(r" →")
                 search = re.search(key, tp)
-                print(search)
                 if search and search.span()[0]>comma_index: 
                     tp = re.sub(key, "", tp)
                     binder = f" ({hyp[0]} : {hyp[1]})"
                     tp = tp[:comma_index] + binder + tp[comma_index:]
                     comma_index += len(binder)
-                    print(tp)
-                    print("comma index char:", tp[comma_index])
 
             # removes trailing parantheses 
             conc = tp[comma_index+1:].strip()
@@ -62,13 +59,27 @@ for step in data:
         # replace [_inst_n : Type] with [Type]
         tp = re.sub(r"_inst_[0-9]* : ", "", tp)
         
-        """
         # Collapses Type u_1's into Type*'s 
-        key = ": Type u_[0-9]\} \{[^\}]: Type u_[0-9]"
+        key = r": Type u_[0-9]\} \{[^\}]*: Type u_[0-9]"
         while re.search(key, tp): 
-            tp = re.sub(
-        """
+            search = re.search(key, tp)
+            left = search.span()[0]
+            right = search.span()[1]
+            tp = tp[:left] + re.sub(": Type u_[0-9]\} \{", "", tp[left:right]) + tp[right:]
+        tp = re.sub("Type u_[0-9]", "Type*", tp)
  
         statement += tp
+
+        # Makes sure all lines aren't much more than 80 characters
+        combinations = [x + " " + y for x in [')', '}', ']'] for y in ['(', '{', '[']]
+        i=1
+        while i < len(statement)-1: 
+            if statement[i-1:i+2] in combinations: 
+                left = statement[:i]
+                if len(left[left.rfind("\n"):])>60: 
+                    statement = statement[:i] + "\n\t" + statement[i+1:]
+                    i += 1
+            i += 1 
+            
 
         print(statement + "\n" + "#"*40)
