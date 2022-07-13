@@ -1,5 +1,7 @@
 /raw_mathlib_data/
+/raw_mathlib_data_valid/
 *.olean
+*.olean.lock
 /_target
 /leanpkg.path
 
